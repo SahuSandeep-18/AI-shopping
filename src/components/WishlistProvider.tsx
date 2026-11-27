@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { track } from "@/lib/track";
+import { api } from "@/lib/api";
 
 export type WishItem = { id: string; title: string; price: number; image: string; url: string };
 
@@ -34,7 +35,7 @@ function sessionId() {
 }
 
 async function post(body: Record<string, unknown>) {
-  const res = await fetch("/api/wishlist", {
+  const res = await fetch(api("/api/wishlist"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...body, sessionId: sessionId() }),
@@ -48,7 +49,7 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
 
   // load saved items when the page opens
   useEffect(() => {
-    fetch(`/api/wishlist?sessionId=${encodeURIComponent(sessionId())}`)
+    fetch(api(`/api/wishlist?sessionId=${encodeURIComponent(sessionId())}`))
       .then((r) => r.json())
       .then((d) => {
         const loaded: WishItem[] = Array.isArray(d.items) ? d.items : [];

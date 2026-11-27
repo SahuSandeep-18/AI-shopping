@@ -7,6 +7,7 @@ import ChatDrawer from "@/components/ChatDrawer";
 import VariantPicker from "@/components/VariantPicker";
 import StoreHeader from "@/components/StoreHeader";
 import { track } from "@/lib/track";
+import { api } from "@/lib/api";
 
 export type Product = {
   id: string;
@@ -20,6 +21,34 @@ export type Product = {
   variantId?: string;
   rts?: boolean;
 };
+
+// On the store domain (/apps/chat) products can be read straight from the store
+async function loadFromStore(): Promise<Product[]> {
+  const res = await fetch("/collections/ready-to-ship/products.json?limit=250");
+  if (!res.ok) return [];
+  const { products } = (await res.json()) as { products: any[] };
+  return products.map((p) => {
+    const variants = ((p.variants ?? []) as any[]).filter((v) => !isNaN(Number(v.price)));
+    const best = variants.length
+      ? variants.reduce((a, b) => (Number(b.price) < Number(a.price) ? b : a))
+      : null;
+    const price = best ? Number(best.price) : 0;
+    const cmp = best?.compare_at_price ? Number(best.compare_at_price) : 0;
+    const compareAt = cmp > price ? cmp : undefined;
+    return {
+      id: String(p.id),
+      title: p.title,
+      price,
+      compareAt,
+      discount: compareAt ? Math.round((1 - price / compareAt) * 100) : 0,
+      image: p.images?.[0]?.src ?? "",
+      image2: p.images?.[1]?.src ?? "",
+      variantId: best ? String(best.id) : "",
+      url: `${window.location.origin}/products/${p.handle}`,
+      rts: true,
+    };
+  });
+}
 
 const BATCH = 12;
 
@@ -36,11 +65,23 @@ export default function Home() {
   const { add } = useCart();
 
   useEffect(() => {
-    fetch("/api/collection")
-      .then((r) => r.json())
-      .then((d) => setDefaults(Array.isArray(d.products) ? d.products : []))
-      .catch(() => {})
-      .finally(() => setLoadingDefaults(false));
+    (async () => {
+      let list: Product[] = [];
+      try {
+        const r = await fetch(api("/api/collection"));
+        const d = await r.json();
+        list = Array.isArray(d.products) ? d.products : [];
+      } catch {}
+
+      // fallback: running on the store domain, read the collection directly
+      if (list.length === 0 && window.location.pathname.startsWith("/apps/chat")) {
+        try {
+          list = await loadFromStore();
+        } catch {}
+      }
+      setDefaults(list);
+      setLoadingDefaults(false);
+    })();
   }, []);
 
   const showingSearch = searchResults.length > 0;

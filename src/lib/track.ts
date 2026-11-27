@@ -1,3 +1,5 @@
+import { api } from "./api";
+
 export function track(e: {
   type:
     | "product_click" | "options_open" | "cart_add" | "cart_remove"
@@ -13,7 +15,7 @@ export function track(e: {
     const sessionId = localStorage.getItem("sid") ?? "anon";
     const conversationId = sessionStorage.getItem("cid") ?? undefined;
     // keepalive: link khulne ya page badalne par bhi request pahunch jaye
-    fetch("/api/event", {
+    fetch(api("/api/event"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...e, sessionId, conversationId }),

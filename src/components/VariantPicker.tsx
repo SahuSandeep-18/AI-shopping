@@ -1,5 +1,6 @@
 "use client";
 
+import { api } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 type Variant = {
@@ -11,6 +12,30 @@ type Variant = {
   image: string;
 };
 type Data = { title: string; options: { name: string; values: string[] }[]; variants: Variant[] };
+
+// On the store domain, read the product straight from the store (browser has the password cookie)
+async function loadFromStore(handle: string): Promise<Data> {
+  const res = await fetch(`/products/${encodeURIComponent(handle)}.js`);
+  if (!res.ok) throw new Error("Could not load options");
+  const p = await res.json();
+
+  const variants: Variant[] = (p.variants ?? []).map((v: any) => ({
+    id: String(v.id),
+    options: [v.option1, v.option2, v.option3].filter((x) => x != null) as string[],
+    price: Number(v.price) / 100,
+    compareAt: v.compare_at_price ? Number(v.compare_at_price) / 100 : null,
+    available: !!v.available,
+    image: v.featured_image?.src ?? "",
+  }));
+
+  const names: string[] = (p.options ?? []).map((o: any) => (typeof o === "string" ? o : o.name));
+  const options = names.map((name, i) => ({
+    name,
+    values: Array.from(new Set(variants.map((v) => v.options[i]).filter(Boolean))) as string[],
+  }));
+
+  return { title: p.title, options, variants };
+}
 
 export default function VariantPicker({
   handle,
@@ -33,16 +58,34 @@ export default function VariantPicker({
   const [adding, setAdding] = useState(false);
   const [engraving, setEngraving] = useState("");
 
-  useEffect(() => {
-    fetch(`/api/product?handle=${encodeURIComponent(handle)}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) throw new Error(d.error);
-        setData(d);
-        const first = d.variants.find((v: Variant) => v.available) ?? d.variants[0];
-        setSelected(first?.options ?? []);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Could not load options"));
+    useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let d: Data | null = null;
+      const onProxy = window.location.pathname.startsWith("/apps/chat");
+
+      try {
+        // on the store domain go straight to the store, elsewhere use our API
+        d = onProxy
+          ? await loadFromStore(handle)
+          : await fetch(`/api/product?handle=${encodeURIComponent(handle)}`).then(async (r) => {
+              const j = await r.json();
+              if (j.error) throw new Error(j.error);
+              return j as Data;
+            });
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load options");
+        return;
+      }
+
+      if (cancelled || !d) return;
+      setData(d);
+      const first = d.variants.find((v) => v.available) ?? d.variants[0];
+      setSelected(first?.options ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [handle]);
 
   const current = data?.variants.find((v) => v.options.every((o, i) => o === selected[i]));

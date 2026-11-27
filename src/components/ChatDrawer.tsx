@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Product } from "@/app/page";
+import { api } from "@/lib/api";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -107,7 +108,7 @@ export default function ChatDrawer({
           content: role === "assistant" ? splitSuggestions(content).text || content : content,
         }));
 
-      const res = await fetch("/api/chat", {
+      const res = await fetch(api("/api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: history, conversationId, sessionId: getSessionId() }),
